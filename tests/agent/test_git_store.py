@@ -205,9 +205,13 @@ class TestRevert:
         git_ready.auto_commit("v2")
 
         commits = git_ready.log()
-        new_sha = git_ready.revert(commits[1].sha)  # revert to init
+        new_sha = git_ready.revert(commits[0].sha)  # undo v2 → back to init
         assert new_sha is not None
         assert (ws / "SOUL.md").read_text(encoding="utf-8") == ""
+
+    def test_cannot_revert_root_commit(self, git_ready):
+        commits = git_ready.log()
+        assert git_ready.revert(commits[-1].sha) is None
 
     def test_invalid_sha_returns_none(self, git_ready):
         assert git_ready.revert("deadbeef") is None
