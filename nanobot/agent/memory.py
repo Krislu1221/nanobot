@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from loguru import logger
 
+from nanobot.agent.git_store import GitStore
 from nanobot.utils.helpers import ensure_dir, estimate_message_tokens, estimate_prompt_tokens_chain
 
 if TYPE_CHECKING:
@@ -82,6 +83,13 @@ class MemoryStore:
         self.memory_file = self.memory_dir / "MEMORY.md"
         self.history_file = self.memory_dir / "HISTORY.md"
         self._consecutive_failures = 0
+        self._git = GitStore(workspace, tracked_files=[
+            "SOUL.md", "USER.md", "memory/MEMORY.md",
+        ])
+
+    @property
+    def git(self) -> GitStore:
+        return self._git
 
     def read_long_term(self) -> str:
         if self.memory_file.exists():
