@@ -312,6 +312,114 @@ async def cmd_help(ctx: CommandContext) -> OutboundMessage:
         metadata={**dict(ctx.msg.metadata or {}), "render_as": "text"},
     )
 
+async def cmd_discover_skills(ctx: CommandContext) -> OutboundMessage:
+    """Analyze conversation history and suggest reusable skills."""
+    import time
+
+    loop = ctx.loop
+    msg = ctx.msg
+    discoverer = getattr(loop, "skill_discoverer", None)
+
+    if discoverer is None:
+        return OutboundMessage(
+            channel=msg.channel, chat_id=msg.chat_id,
+            content="Skill discovery is not enabled. Set `skillDiscovery.enabled: true` in config.",
+        )
+
+    async def _run_discovery():
+        t0 = time.monotonic()
+        try:
+            candidates = await discoverer.discover()
+            elapsed = time.monotonic() - t0
+
+            if not candidates:
+                content = f"Skill discovery completed in {elapsed:.1f}s — no new skills found."
+            else:
+                if discoverer.config.auto_approve:
+                    paths = discoverer.approve_all(candidates)
+                    parts = [
+                        f"Skill discovery completed in {elapsed:.1f}s — "
+                        f"installed {len(candidates)} skill(s):\n",
+                    ]
+                    for candidate, path in zip(candidates, paths):
+                        parts.append(candidate.format_preview())
+                        parts.append(f"📁 Installed to: `{path}`\n")
+                    parts.append("\n_Skills are active immediately._")
+                    content = "\n".join(parts)
+                else:
+                    # Save as pending, wait for user confirmation
+                    discoverer.save_pending(candidates)
+                    parts = [
+                        f"Skill discovery completed in {elapsed:.1f}s — "
+                        f"found {len(candidates)} candidate(s):\n",
+                    ]
+                    for i, c in enumerate(candidates, 1):
+                        parts.append(f"**{i}. {c.name}** — {c.description}")
+                    parts.append(
+                        "\nUse `/skill-approve <name>` to install, "
+                        "or `/skill-approve all` to install all."
+                    )
+                    content = "\n".join(parts)
+        except Exception as e:
+            elapsed = time.monotonic() - t0
+            content = f"Skill discovery failed after {elapsed:.1f}s: {e}"
+
+        await loop.bus.publish_outbound(OutboundMessage(
+            channel=msg.channel, chat_id=msg.chat_id, content=content,
+        ))
+
+    asyncio.create_task(_run_discovery())
+    return OutboundMessage(
+        channel=msg.channel, chat_id=msg.chat_id, content="Discovering skills...",
+    )
+
+
+async def cmd_skill_approve(ctx: CommandContext) -> OutboundMessage:
+    """Approve and install pending skill candidates."""
+    msg = ctx.msg
+    discoverer = getattr(ctx.loop, "skill_discoverer", None)
+    args = ctx.args.strip()
+
+    if not discoverer:
+        return OutboundMessage(
+            channel=msg.channel, chat_id=msg.chat_id,
+            content="Skill discovery is not enabled.",
+        )
+
+    pending = discoverer.list_pending()
+    if not pending:
+        return OutboundMessage(
+            channel=msg.channel, chat_id=msg.chat_id,
+            content="No pending skills to approve.",
+        )
+
+    if args.lower() == "all":
+        paths = [discoverer.approve(c) for c in pending]
+        discoverer.clear_pending()
+        content = f"Installed {len(paths)} skill(s):\n" + "\n".join(
+            f"- **{c.name}** → `{p}`" for c, p in zip(pending, paths)
+        )
+    elif args:
+        matched = [c for c in pending if c.name == args]
+        if not matched:
+            content = (
+                f"No pending skill named '{args}'. "
+                f"Available: {', '.join(c.name for c in pending)}"
+            )
+        else:
+            path = discoverer.approve(matched[0])
+            discoverer.remove_pending(matched[0].name)
+            content = f"Installed skill **{matched[0].name}** → `{path}`"
+    else:
+        parts = ["Pending skills:"]
+        for c in pending:
+            parts.append(f"- **{c.name}** — {c.description}")
+        parts.append("\nUse `/skill-approve <name>` or `/skill-approve all`")
+        content = "\n".join(parts)
+
+    return OutboundMessage(
+        channel=msg.channel, chat_id=msg.chat_id, content=content,
+    )
 
 def build_help_text() -> str:
     """Build canonical help text shared across channels."""
@@ -324,6 +432,8 @@ def build_help_text() -> str:
         "/dream — Manually trigger Dream consolidation",
         "/dream-log — Show what the last Dream changed",
         "/dream-restore — Revert memory to a previous state",
+        "/discover-skills — Analyze history and suggest reusable skills",
+        "/skill-approve — Approve and install pending skill candidates",
         "/help — Show available commands",
     ]
     return "\n".join(lines)
@@ -341,4 +451,7 @@ def register_builtin_commands(router: CommandRouter) -> None:
     router.prefix("/dream-log ", cmd_dream_log)
     router.exact("/dream-restore", cmd_dream_restore)
     router.prefix("/dream-restore ", cmd_dream_restore)
+    router.exact("/discover-skills", cmd_discover_skills)
+    router.exact("/skill-approve", cmd_skill_approve)
+    router.prefix("/skill-approve ", cmd_skill_approve)
     router.exact("/help", cmd_help)
