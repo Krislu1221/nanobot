@@ -132,6 +132,28 @@ class ProvidersConfig(Base):
     qianfan: ProviderConfig = Field(default_factory=ProviderConfig)  # Qianfan (百度千帆)
 
 
+class SkillDiscoveryConfig(Base):
+    """Skill discovery configuration."""
+
+    enabled: bool = False  # opt-in, default off
+    model_override: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("modelOverride", "model", "model_override"),
+    )
+    max_history_entries: int = Field(default=50, ge=1)  # max history entries per analysis
+    max_candidates: int = Field(default=5, ge=1)  # max candidates per discovery run
+    auto_approve: bool = False  # skip user confirmation and install directly
+    # Phase 3 fields (safe to include now, used later)
+    interval_turns: int = Field(default=20, ge=1)  # auto-trigger every N turns
+    min_interval_s: int = Field(default=7200, ge=60)  # minimum interval between auto-triggers (seconds)
+    cron: str | None = Field(default=None, exclude=True)  # optional cron expression
+
+    def build_schedule(self, timezone: str) -> CronSchedule:
+        """Build the runtime schedule for cron-based skill discovery."""
+        if self.cron:
+            return CronSchedule(kind="cron", expr=self.cron, tz=timezone)
+        return CronSchedule(kind="every", every_ms=self.min_interval_s * 1000)
+
 class HeartbeatConfig(Base):
     """Heartbeat service configuration."""
 
@@ -216,6 +238,7 @@ class Config(BaseSettings):
     api: ApiConfig = Field(default_factory=ApiConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
+    skill_discovery: SkillDiscoveryConfig = Field(default_factory=SkillDiscoveryConfig)
 
     @property
     def workspace_path(self) -> Path:

@@ -312,6 +312,23 @@ class MemoryStore:
     def set_last_dream_cursor(self, cursor: int) -> None:
         self._dream_cursor_file.write_text(str(cursor), encoding="utf-8")
 
+    # -- skill discovery cursor -----------------------------------------------
+
+    def get_skill_discovery_cursor(self) -> int:
+        """Read the skill discovery cursor position."""
+        path = self.workspace / ".skill_discovery_cursor"
+        if path.exists():
+            try:
+                return int(path.read_text(encoding="utf-8").strip())
+            except (ValueError, OSError):
+                pass
+        return 0
+
+    def set_skill_discovery_cursor(self, cursor: int) -> None:
+        """Save the skill discovery cursor position."""
+        path = self.workspace / ".skill_discovery_cursor"
+        path.write_text(str(cursor), encoding="utf-8")
+
     # -- message formatting utility ------------------------------------------
 
     @staticmethod

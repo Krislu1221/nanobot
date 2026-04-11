@@ -18,6 +18,8 @@ from nanobot.agent.context import ContextBuilder
 from nanobot.agent.hook import AgentHook, AgentHookContext, CompositeHook
 from nanobot.agent.memory import Consolidator, Dream
 from nanobot.agent.runner import _MAX_INJECTIONS_PER_TURN, AgentRunSpec, AgentRunner
+from nanobot.agent.skill_discovery import SkillDiscoverer
+from nanobot.agent.runner import AgentRunSpec, AgentRunner
 from nanobot.agent.subagent import SubagentManager
 from nanobot.agent.tools.cron import CronTool
 from nanobot.agent.skills import BUILTIN_SKILLS_DIR
@@ -236,6 +238,7 @@ class AgentLoop:
             provider=provider,
             model=self.model,
         )
+        self.skill_discoverer: SkillDiscoverer | None = None
         self._register_default_tools()
         self.commands = CommandRouter()
         register_builtin_commands(self.commands)
@@ -591,6 +594,29 @@ class AgentLoop:
         self._background_tasks.append(task)
         task.add_done_callback(self._background_tasks.remove)
 
+    def _maybe_trigger_skill_discovery(self, session_key: str) -> None:
+        """Trigger skill discovery after a turn if enabled."""
+        sd = self.skill_discoverer
+        if sd is None or not sd.config.enabled:
+            return
+        try:
+            sd.bump_turn_counter(session_key)
+            if sd.should_trigger(session_key):
+                async def _run():
+                    try:
+                        candidates = await sd.discover()
+                        if candidates:
+                            sd.save_pending(candidates)
+                            logger.info(
+                                "Skill Discovery (post-turn): {} candidate(s) pending",
+                                len(candidates),
+                            )
+                    except Exception:
+                        logger.exception("Skill Discovery post-turn failed")
+                self._schedule_background(_run())
+        except Exception:
+            logger.exception("Skill Discovery trigger check failed")
+    
     def stop(self) -> None:
         """Stop the agent loop."""
         self._running = False
@@ -710,6 +736,7 @@ class AgentLoop:
         self._clear_runtime_checkpoint(session)
         self.sessions.save(session)
         self._schedule_background(self.consolidator.maybe_consolidate_by_tokens(session))
+        self._maybe_trigger_skill_discovery(key)
 
         # When follow-up messages were injected mid-turn, a later natural
         # language reply may address those follow-ups and should not be

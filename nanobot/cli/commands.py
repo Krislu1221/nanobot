@@ -698,6 +698,22 @@ def gateway(
             except Exception:
                 logger.exception("Dream cron job failed")
             return None
+        
+        # Skill Discovery is an internal job — run directly.
+        if job.name == "skill-discovery":
+            try:
+                if agent.skill_discoverer:
+                    candidates = await agent.skill_discoverer.discover()
+                    if candidates:
+                        agent.skill_discoverer.save_pending(candidates)
+                        logger.info(
+                            "Skill Discovery cron: {} candidate(s) pending",
+                            len(candidates),
+                        )
+                logger.info("Skill Discovery cron job completed")
+            except Exception:
+                logger.exception("Skill Discovery cron job failed")
+            return None
 
         from nanobot.agent.tools.cron import CronTool
         from nanobot.agent.tools.message import MessageTool
@@ -834,6 +850,28 @@ def gateway(
     ))
     console.print(f"[green]✓[/green] Dream: {dream_cfg.describe_schedule()}")
 
+    # Initialize Skill Discovery (if enabled)
+    sd_cfg = config.skill_discovery
+    if sd_cfg.enabled:
+        from nanobot.agent.skill_discovery import SkillDiscoverer
+        sd_model = sd_cfg.model_override or agent.model
+        agent.skill_discoverer = SkillDiscoverer(
+            store=agent.context.memory,
+            provider=provider,
+            model=sd_model,
+            config=sd_cfg,
+        )
+        if sd_cfg.cron:
+            cron.register_system_job(CronJob(
+                id="skill-discovery",
+                name="skill-discovery",
+                schedule=sd_cfg.build_schedule(config.agents.defaults.timezone),
+                payload=CronPayload(kind="system_event"),
+            ))
+        console.print(f"[green]✓[/green] Skill Discovery: enabled (model={sd_model})")
+    else:
+        console.print("[dim]Skill Discovery: disabled[/dim]")
+
     async def run():
         try:
             await cron.start()
@@ -919,6 +957,18 @@ def agent(
         unified_session=config.agents.defaults.unified_session,
         session_ttl_minutes=config.agents.defaults.session_ttl_minutes,
     )
+    # Initialize Skill Discovery for CLI agent (post-turn trigger only, no cron)
+    sd_cfg = config.skill_discovery
+    if sd_cfg.enabled:
+        from nanobot.agent.skill_discovery import SkillDiscoverer
+        sd_model = sd_cfg.model_override or config.agents.defaults.model
+        agent_loop.skill_discoverer = SkillDiscoverer(
+            store=agent_loop.context.memory,
+            provider=provider,
+            model=sd_model,
+            config=sd_cfg,
+        )
+        
     restart_notice = consume_restart_notice_from_env()
     if restart_notice and should_show_cli_restart_notice(restart_notice, session_id):
         _print_agent_response(
