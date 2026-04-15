@@ -1675,7 +1675,6 @@ async def test_microcompact_skips_non_compactable_tools():
     assert result is messages  # no compactable tools found
 
 
-<<<<<<< HEAD
 @pytest.mark.asyncio
 async def test_runner_tool_error_preserves_tool_results_in_messages():
     """When a tool raises a fatal error, its results must still be appended
@@ -1789,8 +1788,6 @@ def test_governance_fallback_still_repairs_orphans():
     repaired = AgentRunner._backfill_missing_tool_results(repaired)
     # Orphan tool result should be gone.
     assert not any(m.get("tool_call_id") == "orphan_tc" for m in repaired)
-
-
 # ── Mid-turn injection tests ──────────────────────────────────────────────
 
 
