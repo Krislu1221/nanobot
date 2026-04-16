@@ -20,10 +20,32 @@ DEFAULT_SERVER_URL = "http://127.0.0.1:18791"
 
 
 def _write_provider_config(token: str, server_url: str) -> None:
-    """Write token and server URL into nanobot config as the 'nanobot' provider."""
+    """Write token, server URL, and set nanobot as default provider."""
     config = load_config()
     config.providers.nanobot.api_key = token
     config.providers.nanobot.api_base = server_url
+
+    # Switch default provider to nanobot so `nanobot agent` works directly
+    config.agents.defaults.provider = "nanobot"
+
+    # Fetch the server's default model name
+    try:
+        resp = httpx.get(
+            f"{server_url}/v1/models",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        models = resp.json().get("data", [])
+        if models:
+            config.agents.defaults.model = models[0]["id"]
+        else:
+            console.print("[yellow]Warning: server returned no models. Default model not updated.[/yellow]")
+    except httpx.HTTPStatusError as e:
+        console.print(f"[yellow]Warning: failed to fetch models from server ({e.response.status_code}). Default model not updated.[/yellow]")
+    except httpx.ConnectError:
+        console.print(f"[yellow]Warning: cannot reach server to fetch models. Default model not updated.[/yellow]")
+
     save_config(config)
     logger.debug(f"Updated config: providers.nanobot -> {server_url}")
 
