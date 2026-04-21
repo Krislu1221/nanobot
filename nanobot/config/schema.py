@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Literal
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 from pydantic.alias_generators import to_camel
 from pydantic_settings import BaseSettings
 
@@ -245,6 +245,22 @@ class Config(BaseSettings):
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
     model_presets: dict[str, ModelPresetConfig] = Field(default_factory=dict)
+
+    _PRESET_FIELDS = ("model", "provider", "max_tokens", "context_window_tokens", "temperature", "reasoning_effort")
+
+    @model_validator(mode="after")
+    def _resolve_model_preset(self) -> "Config":
+        preset_name = self.agents.defaults.model_preset
+        if not preset_name:
+            return self
+        if preset_name not in self.model_presets:
+            raise ValueError(f"model_preset {preset_name!r} not found in model_presets")
+        preset = self.model_presets[preset_name]
+        # Preset wins completely — no partial override.
+        # This avoids user confusion where old config remnants silently override preset values.
+        for field_name in self._PRESET_FIELDS:
+            setattr(self.agents.defaults, field_name, getattr(preset, field_name))
+        return self
 
     @property
     def workspace_path(self) -> Path:
