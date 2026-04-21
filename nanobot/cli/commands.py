@@ -598,9 +598,11 @@ def serve(
     )
 
     model_name = runtime_config.agents.defaults.model
+    preset_name = runtime_config.agents.defaults.model_preset
+    preset_tag = f" (preset: {preset_name})" if preset_name else ""
     console.print(f"{__logo__} Starting OpenAI-compatible API server")
     console.print(f"  [cyan]Endpoint[/cyan] : http://{host}:{port}/v1/chat/completions")
-    console.print(f"  [cyan]Model[/cyan]    : {model_name}")
+    console.print(f"  [cyan]Model[/cyan]    : {model_name}{preset_tag}")
     console.print("  [cyan]Session[/cyan]  : api:default")
     console.print(f"  [cyan]Timeout[/cyan]  : {timeout}s")
     if host in {"0.0.0.0", "::"}:
@@ -1458,7 +1460,9 @@ def status():
     if config_path.exists():
         from nanobot.providers.registry import PROVIDERS
 
-        console.print(f"Model: {config.agents.defaults.model}")
+        _preset = config.agents.defaults.model_preset
+        _preset_tag = f" (preset: {_preset})" if _preset else ""
+        console.print(f"Model: {config.agents.defaults.model}{_preset_tag}")
 
         # Check API keys from registry
         for spec in PROVIDERS:
