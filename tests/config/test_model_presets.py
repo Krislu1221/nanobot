@@ -108,6 +108,27 @@ def test_no_preset_means_no_changes() -> None:
     assert cfg.agents.defaults.max_tokens == 8192  # built-in default
 
 
+def test_agent_loop_stores_model_presets() -> None:
+    from pathlib import Path
+    from unittest.mock import MagicMock
+
+    from nanobot.agent.loop import AgentLoop
+
+    presets = {
+        "gpt5": ModelPresetConfig(model="gpt-5", provider="openai"),
+    }
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test"
+
+    loop = AgentLoop(
+        bus=MagicMock(),
+        provider=provider,
+        workspace=Path("/tmp/test"),
+        model_presets=presets,
+    )
+    assert loop.model_presets == presets
+
+
 def test_preset_with_reasoning_effort() -> None:
     cfg = Config.model_validate({
         "model_presets": {
