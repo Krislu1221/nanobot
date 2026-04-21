@@ -64,10 +64,22 @@ class DreamConfig(Base):
         return f"every {hours}h"
 
 
+class ModelPresetConfig(Base):
+    """A named set of model + generation parameters for quick switching."""
+
+    model: str
+    provider: str = "auto"
+    max_tokens: int = 8192
+    context_window_tokens: int = 65_536
+    temperature: float = 0.1
+    reasoning_effort: str | None = None
+
+
 class AgentDefaults(Base):
     """Default agent configuration."""
 
     workspace: str = "~/.nanobot/workspace"
+    model_preset: str | None = None  # Reference to a key in Config.model_presets
     model: str = "anthropic/claude-opus-4-5"
     provider: str = (
         "auto"  # Provider name (e.g. "anthropic", "openrouter") or "auto" for auto-detection
@@ -232,6 +244,7 @@ class Config(BaseSettings):
     api: ApiConfig = Field(default_factory=ApiConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
+    model_presets: dict[str, ModelPresetConfig] = Field(default_factory=dict)
 
     @property
     def workspace_path(self) -> Path:
