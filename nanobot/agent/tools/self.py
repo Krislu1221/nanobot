@@ -79,15 +79,15 @@ class MyTool(Tool):
         "max_iterations":        {"type": int, "min": 1,   "max": 100},
         "context_window_tokens": {"type": int, "min": 4096, "max": 1_000_000},
         "model":                 {"type": str, "min_len": 1},
-        "model_preset":          {"type": str, "min_len": 1},
     }
 
     _MAX_RUNTIME_KEYS = 64
 
-    def __init__(self, loop: AgentLoop, modify_allowed: bool = True, model_presets: dict[str, Any] | None = None) -> None:
+    def __init__(self, loop: AgentLoop, modify_allowed: bool = True, model_presets: dict[str, Any] | None = None, active_preset: str | None = None) -> None:
         self._loop = loop
         self._modify_allowed = modify_allowed
         self._model_presets: dict[str, Any] = model_presets or {}
+        self._active_preset: str | None = active_preset
         self._channel = ""
         self._chat_id = ""
 
@@ -98,6 +98,7 @@ class MyTool(Tool):
         result._loop = self._loop
         result._modify_allowed = self._modify_allowed
         result._model_presets = self._model_presets
+        result._active_preset = self._active_preset
         result._channel = self._channel
         result._chat_id = self._chat_id
         return result
@@ -313,7 +314,9 @@ class MyTool(Tool):
             return f"Error: '{top}' is not accessible"
         obj, err = self._resolve_path(key)
         if err:
-            # "model_presets" lives on MyTool, not AgentLoop
+            # Keys that live on MyTool, not AgentLoop
+            if key == "model_preset":
+                return self._format_value(self._active_preset, "model_preset")
             if key == "model_presets":
                 return self._format_value(self._model_presets, "model_presets")
             # "scratchpad" alias for _runtime_vars
@@ -337,6 +340,8 @@ class MyTool(Tool):
         # RESTRICTED keys
         for k in self.RESTRICTED:
             parts.append(self._format_value(getattr(loop, k, None), k))
+        # model_preset is managed by MyTool, not on AgentLoop
+        parts.append(self._format_value(self._active_preset, "model_preset"))
         # Other useful top-level keys shown in description
         for k in ("workspace", "provider_retry_mode", "max_tool_result_chars", "_current_iteration", "web_config", "exec_config", "subagents"):
             if _has_real_attr(loop, k):
@@ -381,6 +386,8 @@ class MyTool(Tool):
             return f"Set {key} = {value!r}"
         if key in self.RESTRICTED:
             return self._modify_restricted(key, value)
+        if key == "model_preset":
+            return self._modify_model_preset(value)
         return self._modify_free(key, value)
 
     def _modify_restricted(self, key: str, value: Any) -> str:
@@ -394,41 +401,11 @@ class MyTool(Tool):
             except (ValueError, TypeError):
                 return f"Error: '{key}' must be {expected.__name__}, got {type(value).__name__}"
 
-        # --- model_preset: resolve all fields from preset ---
-        if key == "model_preset":
-            from nanobot.config.schema import ModelPresetConfig
-            presets: dict[str, ModelPresetConfig] = self._model_presets
-            if value not in presets:
-                self._audit("modify", f"model_preset FAILED: {value!r} not found")
-                return f"Error: model_preset {value!r} not found. Available: {', '.join(presets) or '(none)'}"
-            preset = presets[value]
-            old_model = self._loop.model
-            old_cwt = self._loop.context_window_tokens
-            old_gen = self._loop.provider.generation
-            # Apply all preset fields
-            self._loop.model = preset.model
-            self._loop.context_window_tokens = preset.context_window_tokens
-            self._loop.provider.generation = GenerationSettings(
-                temperature=preset.temperature,
-                max_tokens=preset.max_tokens,
-                reasoning_effort=preset.reasoning_effort,
-            )
-            self._loop.model_preset = value
-            self._audit("modify", f"model_preset: {old_model!r} -> {preset.model!r} (full preset applied)")
-            return (
-                f"Set model_preset = {value!r}\n"
-                f"  model: {old_model!r} -> {preset.model!r}\n"
-                f"  context_window_tokens: {old_cwt} -> {preset.context_window_tokens}\n"
-                f"  max_tokens: {old_gen.max_tokens} -> {preset.max_tokens}\n"
-                f"  temperature: {old_gen.temperature} -> {preset.temperature}\n"
-                f"  reasoning_effort: {old_gen.reasoning_effort!r} -> {preset.reasoning_effort!r}"
-            )
-
         # --- existing restricted key logic ---
         old = getattr(self._loop, key)
         # When model is set directly, it no longer matches any preset
         if key == "model":
-            self._loop.model_preset = None
+            self._active_preset = None
         if "min" in spec and value < spec["min"]:
             return f"Error: '{key}' must be >= {spec['min']}"
         if "max" in spec and value > spec["max"]:
@@ -438,6 +415,39 @@ class MyTool(Tool):
         setattr(self._loop, key, value)
         self._audit("modify", f"{key}: {old!r} -> {value!r}")
         return f"Set {key} = {value!r} (was {old!r})"
+
+    def _modify_model_preset(self, value: Any) -> str:
+        """Set model_preset: resolve all fields from the preset."""
+        from nanobot.config.schema import ModelPresetConfig
+
+        if not isinstance(value, str) or not value.strip():
+            return "Error: model_preset must be a non-empty string"
+        presets: dict[str, ModelPresetConfig] = self._model_presets
+        if value not in presets:
+            self._audit("modify", f"model_preset FAILED: {value!r} not found")
+            return f"Error: model_preset {value!r} not found. Available: {', '.join(presets) or '(none)'}"
+        preset = presets[value]
+        old_model = self._loop.model
+        old_cwt = self._loop.context_window_tokens
+        old_gen = self._loop.provider.generation
+        # Apply all preset fields
+        self._loop.model = preset.model
+        self._loop.context_window_tokens = preset.context_window_tokens
+        self._loop.provider.generation = GenerationSettings(
+            temperature=preset.temperature,
+            max_tokens=preset.max_tokens,
+            reasoning_effort=preset.reasoning_effort,
+        )
+        self._active_preset = value
+        self._audit("modify", f"model_preset: {old_model!r} -> {preset.model!r} (full preset applied)")
+        return (
+            f"Set model_preset = {value!r}\n"
+            f"  model: {old_model!r} -> {preset.model!r}\n"
+            f"  context_window_tokens: {old_cwt} -> {preset.context_window_tokens}\n"
+            f"  max_tokens: {old_gen.max_tokens} -> {preset.max_tokens}\n"
+            f"  temperature: {old_gen.temperature} -> {preset.temperature}\n"
+            f"  reasoning_effort: {old_gen.reasoning_effort!r} -> {preset.reasoning_effort!r}"
+        )
 
     def _modify_free(self, key: str, value: Any) -> str:
         if _has_real_attr(self._loop, key):

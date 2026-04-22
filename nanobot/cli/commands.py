@@ -1080,6 +1080,7 @@ def agent(
         session_ttl_minutes=config.agents.defaults.session_ttl_minutes,
         tools_config=config.tools,
         model_presets=config.model_presets,
+        model_preset=config.agents.defaults.model_preset,
     )
     restart_notice = consume_restart_notice_from_env()
     if restart_notice and should_show_cli_restart_notice(restart_notice, session_id):

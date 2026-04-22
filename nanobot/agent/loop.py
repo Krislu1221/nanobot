@@ -173,7 +173,6 @@ class AgentLoop:
         self.provider = provider
         self.workspace = workspace
         self.model = model or provider.get_default_model()
-        self.model_preset = model_preset
         self.max_iterations = (
             max_iterations if max_iterations is not None else defaults.max_tool_iterations
         )
@@ -251,7 +250,7 @@ class AgentLoop:
         )
         self._register_default_tools()
         if _tc.my.enable:
-            self.tools.register(MyTool(loop=self, modify_allowed=_tc.my.allow_set, model_presets=model_presets))
+            self.tools.register(MyTool(loop=self, modify_allowed=_tc.my.allow_set, model_presets=model_presets, active_preset=model_preset))
         self._runtime_vars: dict[str, Any] = {}
         self._current_iteration: int = 0
         self.commands = CommandRouter()
