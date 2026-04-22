@@ -595,6 +595,7 @@ def serve(
         session_ttl_minutes=runtime_config.agents.defaults.session_ttl_minutes,
         tools_config=runtime_config.tools,
         model_presets=runtime_config.model_presets,
+        model_preset=runtime_config.agents.defaults.model_preset,
     )
 
     model_name = runtime_config.agents.defaults.model
@@ -702,6 +703,7 @@ def _run_gateway(
         session_ttl_minutes=config.agents.defaults.session_ttl_minutes,
         tools_config=config.tools,
         model_presets=config.model_presets,
+        model_preset=config.agents.defaults.model_preset,
     )
 
     # Set cron callback (needs agent)

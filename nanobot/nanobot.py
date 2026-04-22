@@ -86,6 +86,7 @@ class Nanobot:
             session_ttl_minutes=defaults.session_ttl_minutes,
             tools_config=config.tools,
             model_presets=config.model_presets,
+            model_preset=defaults.model_preset,
         )
         return cls(loop)
 

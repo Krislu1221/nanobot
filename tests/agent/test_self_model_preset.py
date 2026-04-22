@@ -13,15 +13,16 @@ def _make_loop(presets: dict | None = None) -> tuple[AgentLoop, MyTool]:
     provider = MagicMock()
     provider.get_default_model.return_value = "test-model"
     provider.generation = GenerationSettings(temperature=0.1, max_tokens=8192)
+    _presets = presets or {}
     loop = AgentLoop(
         bus=MagicMock(),
         provider=provider,
         workspace=Path("/tmp/test"),
         model="test-model",
         context_window_tokens=65536,
-        model_presets=presets or {},
+        model_presets=_presets,
     )
-    tool = MyTool(loop, modify_allowed=True)
+    tool = MyTool(loop, modify_allowed=True, model_presets=_presets)
     return loop, tool
 
 

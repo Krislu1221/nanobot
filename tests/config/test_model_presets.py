@@ -113,6 +113,7 @@ def test_agent_loop_stores_model_presets() -> None:
     from unittest.mock import MagicMock
 
     from nanobot.agent.loop import AgentLoop
+    from nanobot.agent.tools.self import MyTool
 
     presets = {
         "gpt5": ModelPresetConfig(model="gpt-5", provider="openai"),
@@ -126,7 +127,10 @@ def test_agent_loop_stores_model_presets() -> None:
         workspace=Path("/tmp/test"),
         model_presets=presets,
     )
-    assert loop.model_presets == presets
+    # model_presets is now on MyTool, not on AgentLoop
+    my_tool = loop.tools.get("my")
+    assert my_tool is not None
+    assert my_tool._model_presets == presets
 
 
 def test_preset_with_reasoning_effort() -> None:

@@ -162,6 +162,7 @@ class AgentLoop:
         disabled_skills: list[str] | None = None,
         tools_config: ToolsConfig | None = None,
         model_presets: dict[str, ModelPresetConfig] | None = None,
+        model_preset: str | None = None,
     ):
         from nanobot.config.schema import ExecToolConfig, ToolsConfig, WebToolsConfig
 
@@ -172,6 +173,7 @@ class AgentLoop:
         self.provider = provider
         self.workspace = workspace
         self.model = model or provider.get_default_model()
+        self.model_preset = model_preset
         self.max_iterations = (
             max_iterations if max_iterations is not None else defaults.max_tool_iterations
         )
@@ -194,8 +196,6 @@ class AgentLoop:
         self._start_time = time.time()
         self._last_usage: dict[str, int] = {}
         self._extra_hooks: list[AgentHook] = hooks or []
-        self.model_presets: dict[str, ModelPresetConfig] = model_presets or {}
-
         self.context = ContextBuilder(workspace, timezone=timezone, disabled_skills=disabled_skills)
         self.sessions = session_manager or SessionManager(workspace)
         self.tools = ToolRegistry()
@@ -251,7 +251,7 @@ class AgentLoop:
         )
         self._register_default_tools()
         if _tc.my.enable:
-            self.tools.register(MyTool(loop=self, modify_allowed=_tc.my.allow_set))
+            self.tools.register(MyTool(loop=self, modify_allowed=_tc.my.allow_set, model_presets=model_presets))
         self._runtime_vars: dict[str, Any] = {}
         self._current_iteration: int = 0
         self.commands = CommandRouter()

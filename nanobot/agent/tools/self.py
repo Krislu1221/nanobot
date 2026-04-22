@@ -84,9 +84,10 @@ class MyTool(Tool):
 
     _MAX_RUNTIME_KEYS = 64
 
-    def __init__(self, loop: AgentLoop, modify_allowed: bool = True) -> None:
+    def __init__(self, loop: AgentLoop, modify_allowed: bool = True, model_presets: dict[str, Any] | None = None) -> None:
         self._loop = loop
         self._modify_allowed = modify_allowed
+        self._model_presets: dict[str, Any] = model_presets or {}
         self._channel = ""
         self._chat_id = ""
 
@@ -96,6 +97,7 @@ class MyTool(Tool):
         memo[id(self)] = result
         result._loop = self._loop
         result._modify_allowed = self._modify_allowed
+        result._model_presets = self._model_presets
         result._channel = self._channel
         result._chat_id = self._chat_id
         return result
@@ -309,18 +311,11 @@ class MyTool(Tool):
         top = key.split(".")[0]
         if top in self._DENIED_ATTRS or top.startswith("__"):
             return f"Error: '{top}' is not accessible"
-        # Special handling for model_preset: show current + available
-        if key == "model_preset":
-            current = self._loop._runtime_vars.get("model_preset")
-            presets = self._loop.model_presets
-            lines = [f"current: {current!r}" if current else "current: None"]
-            if presets:
-                lines.append(f"available: {', '.join(presets)}")
-            else:
-                lines.append("available: (none)")
-            return "\n".join(lines)
         obj, err = self._resolve_path(key)
         if err:
+            # "model_presets" lives on MyTool, not AgentLoop
+            if key == "model_presets":
+                return self._format_value(self._model_presets, "model_presets")
             # "scratchpad" alias for _runtime_vars
             if key == "scratchpad":
                 rv = self._loop._runtime_vars
@@ -402,7 +397,7 @@ class MyTool(Tool):
         # --- model_preset: resolve all fields from preset ---
         if key == "model_preset":
             from nanobot.config.schema import ModelPresetConfig
-            presets: dict[str, ModelPresetConfig] = self._loop.model_presets
+            presets: dict[str, ModelPresetConfig] = self._model_presets
             if value not in presets:
                 self._audit("modify", f"model_preset FAILED: {value!r} not found")
                 return f"Error: model_preset {value!r} not found. Available: {', '.join(presets) or '(none)'}"
@@ -418,7 +413,7 @@ class MyTool(Tool):
                 max_tokens=preset.max_tokens,
                 reasoning_effort=preset.reasoning_effort,
             )
-            self._loop._runtime_vars["model_preset"] = value
+            self._loop.model_preset = value
             self._audit("modify", f"model_preset: {old_model!r} -> {preset.model!r} (full preset applied)")
             return (
                 f"Set model_preset = {value!r}\n"
@@ -431,6 +426,9 @@ class MyTool(Tool):
 
         # --- existing restricted key logic ---
         old = getattr(self._loop, key)
+        # When model is set directly, it no longer matches any preset
+        if key == "model":
+            self._loop.model_preset = None
         if "min" in spec and value < spec["min"]:
             return f"Error: '{key}' must be >= {spec['min']}"
         if "max" in spec and value > spec["max"]:
