@@ -1,6 +1,6 @@
 ---
 name: project-manager
-description: "Project context isolation and state management system. Creates per-project STATUS.md files for seamless context recovery across sessions. Supports intent recognition, tiered templates, and concurrent-safe writes."
+description: "Project context isolation and state management system. Creates per-project STATUS.md files for seamless context recovery across sessions. Supports intent recognition, tiered templates, and write-safe updates."
 always: false
 ---
 
@@ -30,7 +30,7 @@ When using auto-coding skills for development, detailed engineering state files 
 3. **Memory Lean**: Project progress lives only in `STATUS.md`.
 4. **Tiered Management**: Not every task deserves a full STATUS.md — match complexity to template.
 5. **Intent-First**: No rigid keywords — infer intent from conversation context.
-6. **Concurrent-Safe**: Always read latest `STATUS.md` before writing. Merge, then write. Never overwrite from stale cache.
+6. **Write-Safe**: Always read latest `STATUS.md` before writing. Merge, then write. Reduces accidental overwrites within a session. (Note: true multi-session atomic safety requires locking/CAS — see DESIGN.md.)
 
 ## Directory Structure
 
@@ -74,47 +74,7 @@ workspace/projects/
 
 Choose based on complexity — **don't over-engineer**.
 
-### A) Full Template (>3-day projects / multi-phase / collaboration)
-
-```markdown
-# Project: [Name]
-> Last Updated: [Date] | Git: [commit hash, if applicable]
-
-## 🎯 Core Objective
-[One-sentence description of the project's ultimate goal]
-
-## 📍 Current Status
-[What phase are we in, what was just completed]
-
-## 📋 Todo
-- [x] Completed item 1
-- [ ] Pending item 2 (high priority)
-- [ ] Pending item 3
-
-## 🔑 Key Context / Decisions
-- Decision 1 (why we chose this approach)
-- Constraint 1 (user-mandated requirements)
-- Links (relevant URLs/file paths)
-
-## 🛑 Pause Reason / Open Questions
-[If paused, record blockers or questions for next session]
-```
-
-### B) Lightweight Template (<3-day single task / personal small project)
-
-```markdown
-# Project: [Name]
-> Last Updated: [Date]
-
-## 📍 Current Status
-[One-sentence progress summary]
-
-## 🔑 Decisions (optional)
-[Record why if an important choice was made. Omit if none.]
-
-## 📋 Next Step
-- [ ] What to do next
-```
+For full template content, see `references/templates.md`.
 
 ### Template Selection Rules
 
@@ -158,7 +118,7 @@ Choose based on complexity — **don't over-engineer**.
 3. Choose A/B template based on complexity, create `STATUS.md`
 4. **Ensure `index.md` exists**: Auto-create with header if missing
 5. Update `projects/index.md` (add to top)
-6. Check for git repo, record initial commit hash if present
+6. Check for git repo (`git -C workspace/projects/cmra-geo rev-parse --is-inside-work-tree`), record initial commit hash if present
 7. **Reply**: "✅ Created project `cmra-geo`. Tell me the project goal and first step."
 
 ### 3. Resume Existing Project
@@ -232,9 +192,9 @@ Choose based on complexity — **don't over-engineer**.
 
 ## Git Integration (Optional)
 
-If project directory has `.git`:
+If project directory is a git repo (check with `git -C projects/{name} rev-parse --is-inside-work-tree`):
 - STATUS.md header records `Git: [latest commit hash]`
-- On state update, run `git log --oneline -1` to get latest commit
+- On state update, run `git -C projects/{name} log --oneline -1` to get latest commit
 - Helps quickly locate code state
 
 ---
@@ -246,9 +206,9 @@ If project directory has `.git`:
 3. **Minimalism**: STATUS.md records only "conclusions" and "next steps", not process流水账.
 4. **Template Downgrade**: Small tasks use lightweight template — avoid over-engineering.
 5. **Fuzzy Match**: When user says "that one from last time" or "continue", actively infer the project; if unsure, show recent projects for selection — never guess blindly.
-6. **Concurrent-Safe**: Read latest STATUS.md before writing, merge, then write — prevent multi-session overwrites.
+6. **Write-Safe**: Read latest STATUS.md before writing, merge, then write — reduces accidental overwrites within a session. (True multi-session atomic safety requires locking/CAS.)
 7. **Index Self-Healing**: Auto-create on first use if missing; auto-add projects whose directories exist but aren't in index.
 
 ---
 
-*v2.1 — Auto-created index.md, concurrent-safe writes, fuzzy-match fallback, B template enhanced with optional decisions, archive细化, memory boundary clarified, index self-healing.*
+*v2.2 — Templates moved to references/, concurrent-safety claims softened with TOCTOU limitation noted, git commands scoped to project directory, worktree detection via git-native probe.*
